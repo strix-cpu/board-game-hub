@@ -1,8 +1,8 @@
 // Pure, client-safe game logic for the board game hub.
 // No Supabase / React imports here so it can be shared and tested.
-
+ 
 export type PlayerSymbol = "X" | "O";
-
+ 
 export interface GameTypeMeta {
   id: string;
   name: string;
@@ -14,7 +14,7 @@ export interface GameTypeMeta {
   emoji: string;
   accent: string;
 }
-
+ 
 export const GAMES: GameTypeMeta[] = [
   {
     id: "tic-tac-toe",
@@ -38,20 +38,31 @@ export const GAMES: GameTypeMeta[] = [
     emoji: "🔴",
     accent: "coral",
   },
+  {
+    id: "uno",
+    name: "Uno",
+    tagline: "Match colors and numbers, empty your hand first",
+    minPlayers: 2,
+    maxPlayers: 4,
+    rows: 0,
+    cols: 0,
+    emoji: "🎴",
+    accent: "violet",
+  },
 ];
-
+ 
 export function gameMeta(id: string): GameTypeMeta | undefined {
   return GAMES.find((g) => g.id === id);
 }
-
+ 
 /* ----------------------------- Tic-Tac-Toe ----------------------------- */
-
+ 
 export type TTTBoard = (PlayerSymbol | null)[];
-
+ 
 export function tttInit(): TTTBoard {
   return Array(9).fill(null);
 }
-
+ 
 const TTT_LINES: [number, number, number][] = [
   [0, 1, 2],
   [3, 4, 5],
@@ -62,13 +73,13 @@ const TTT_LINES: [number, number, number][] = [
   [0, 4, 8],
   [2, 4, 6],
 ];
-
+ 
 export interface TTTResult {
   winner: PlayerSymbol | null;
   line: number[] | null;
   draw: boolean;
 }
-
+ 
 export function tttWinner(b: TTTBoard): TTTResult {
   for (const line of TTT_LINES) {
     const [a, b1, c] = line;
@@ -79,15 +90,15 @@ export function tttWinner(b: TTTBoard): TTTResult {
   }
   return { winner: null, line: null, draw: b.every(Boolean) };
 }
-
+ 
 /* ----------------------------- Connect Four ----------------------------- */
-
+ 
 export type CFBoard = (PlayerSymbol | null)[][]; // [row][col], row 0 = top
-
+ 
 export function cfInit(rows = 6, cols = 7): CFBoard {
   return Array.from({ length: rows }, () => Array<PlayerSymbol | null>(cols).fill(null));
 }
-
+ 
 export function cfDrop(
   b: CFBoard,
   col: number,
@@ -104,13 +115,13 @@ export function cfDrop(
   }
   return null; // column full
 }
-
+ 
 export interface CFResult {
   winner: PlayerSymbol | null;
   cells: [number, number][] | null;
   draw: boolean;
 }
-
+ 
 export function cfWinner(b: CFBoard): CFResult {
   const rows = b.length;
   const cols = b[0]?.length ?? 0;
@@ -147,10 +158,15 @@ export function cfWinner(b: CFBoard): CFResult {
   }
   return { winner: null, cells: null, draw: false };
 }
-
+ 
 /* ----------------------------- Generic helpers ----------------------------- */
-
-/** Initialize the stored board JSON for a game type. */
+ 
+/**
+ * Initialize the stored board JSON for a game type.
+ * Note: Uno is NOT initialized here because its setup needs the player id
+ * list (to deal hands) — see initUno() in uno-engine.ts, called directly
+ * from the room page's startGame/playAgain handlers.
+ */
 export function initBoard(
   gameType: string,
   meta: GameTypeMeta,
@@ -159,3 +175,4 @@ export function initBoard(
   if (gameType === "connect-four") return { grid: cfInit(meta.rows, meta.cols) };
   return {};
 }
+ 
