@@ -294,7 +294,7 @@ function RoomPage() {
                 <div className="mt-6 text-center">
                   {winnerSymbol ? (
                     <p className="text-2xl font-bold text-foreground">
-                      {winnerSymbol === mySymbol ? "🎉 You win!" : `${winnerSymbol} wins!`}
+                      {winnerSymbol === mySymbol ? "You win!" : `${winnerSymbol} wins!`}
                     </p>
                   ) : isDraw ? (
                     <p className="text-2xl font-bold text-foreground">It's a draw!</p>
