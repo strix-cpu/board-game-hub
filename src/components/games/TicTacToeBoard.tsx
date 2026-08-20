@@ -1,5 +1,5 @@
 import type { TTTBoard } from "@/lib/game-engine";
-
+ 
 export function TicTacToeBoard({
   cells,
   winningLine,
@@ -15,7 +15,7 @@ export function TicTacToeBoard({
 }) {
   const winSet = winningLine ? new Set(winningLine) : null;
   return (
-    <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+    <div className="mx-auto grid w-full max-w-[420px] grid-cols-3 gap-3 sm:max-w-[480px] sm:gap-4">
       {cells.map((cell, i) => {
         const isWin = winSet?.has(i) ?? false;
         const empty = cell === null;
@@ -28,7 +28,7 @@ export function TicTacToeBoard({
             onClick={() => onMove(i)}
             className={[
               "flex aspect-square items-center justify-center rounded-xl border-2 transition-all",
-              "text-5xl sm:text-6xl font-bold leading-none",
+              "text-6xl sm:text-7xl font-bold leading-none",
               isWin
                 ? "border-primary bg-primary/15"
                 : "border-[color:var(--border)]",
@@ -50,3 +50,4 @@ export function TicTacToeBoard({
     </div>
   );
 }
+ 
