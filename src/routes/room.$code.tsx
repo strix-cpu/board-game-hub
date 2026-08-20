@@ -10,6 +10,7 @@ import {
   type GameStateRow,
 } from "@/lib/game-hub";
 import {
+  cfDrop,
   cfInit,
   cfWinner,
   gameMeta,
