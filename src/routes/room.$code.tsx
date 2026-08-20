@@ -21,10 +21,23 @@ import {
   type PlayerSymbol,
   type TTTBoard,
 } from "@/lib/game-engine";
+import {
+  checkWinner as unoCheckWinner,
+  currentPlayerId as unoCurrentPlayerId,
+  drawForTurn as unoDrawForTurn,
+  hasPlayableCard as unoHasPlayableCard,
+  initUno,
+  passTurn as unoPassTurn,
+  playCard as unoPlayCard,
+  type UnoCard,
+  type UnoColor,
+  type UnoState,
+} from "@/lib/uno-engine";
 import { getRoomByCode } from "@/lib/rooms.functions";
 import { TicTacToeBoard } from "@/components/games/TicTacToeBoard";
 import { ConnectFourBoard } from "@/components/games/ConnectFourBoard";
-
+import { UnoBoard } from "@/components/games/UnoBoard";
+ 
 export const Route = createFileRoute("/room/$code")({
   loader: async ({ params }) => {
     const res = await getRoomByCode({ data: { code: params.code } });
@@ -41,18 +54,20 @@ export const Route = createFileRoute("/room/$code")({
   }),
   component: RoomPage,
 });
-
+ 
 function RoomPage() {
   const initial = Route.useLoaderData();
   const navigate = useNavigate();
   const playerId = getPlayerId();
   const meta = useMemo(() => gameMeta(initial.room.game_type), [initial.room]);
-
+  const isUno = initial.room.game_type === "uno";
+ 
   const [room, setRoom] = useState<RoomRow>(initial.room);
   const [players, setPlayers] = useState<PlayerRow[]>(initial.players);
   const [state, setState] = useState<GameStateRow | null>(initial.state);
   const [copied, setCopied] = useState(false);
-
+  const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
+ 
   // realtime subscriptions
   useEffect(() => {
     const roomId = room.id;
@@ -89,19 +104,24 @@ function RoomPage() {
       supabase.removeChannel(channel);
     };
   }, [room.id]);
-
+ 
+  // reset "drawn this turn" flag whenever the active player changes
+  useEffect(() => {
+    setHasDrawnThisTurn(false);
+  }, [state?.current_player_id]);
+ 
   if (!meta) {
     return (
       <div className="p-10 text-center text-muted-foreground">Unknown game type.</div>
     );
   }
-
+ 
   const me = players.find((p) => p.player_id === playerId);
   const isHost = room.host_player_id === playerId;
   const mySymbol = (me?.symbol ?? null) as PlayerSymbol | null;
   const myTurn =
     room.status === "playing" && state?.current_player_id === playerId;
-
+ 
   // ---- board parsing ----
   const tttCells: TTTBoard = useMemo(() => {
     const b = state?.board as { cells?: TTTBoard } | undefined;
@@ -111,16 +131,31 @@ function RoomPage() {
     const b = state?.board as { grid?: CFBoard } | undefined;
     return b?.grid ?? cfInit(meta.rows, meta.cols);
   }, [state, meta]);
-
+  const unoState: UnoState | null = useMemo(() => {
+    if (!isUno) return null;
+    const b = state?.board as UnoState | undefined;
+    return b && b.hands ? b : null;
+  }, [state, isUno]);
+ 
   const tttResult = useMemo(() => tttWinner(tttCells), [tttCells]);
   const cfResult = useMemo(() => cfWinner(cfGrid), [cfGrid]);
-
+ 
   const winnerSymbol: PlayerSymbol | null =
     initial.room.game_type === "tic-tac-toe"
       ? tttResult.winner
-      : cfResult.winner;
-  const isDraw = initial.room.game_type === "tic-tac-toe" ? tttResult.draw : cfResult.draw;
-
+      : initial.room.game_type === "connect-four"
+        ? cfResult.winner
+        : null;
+  const isDraw =
+    initial.room.game_type === "tic-tac-toe"
+      ? tttResult.draw
+      : initial.room.game_type === "connect-four"
+        ? cfResult.draw
+        : false;
+  const unoWinnerName = isUno
+    ? players.find((p) => p.player_id === state?.winner_player_id)?.name ?? null
+    : null;
+ 
   // ---- actions ----
   const toggleReady = async () => {
     if (!me) return;
@@ -129,12 +164,31 @@ function RoomPage() {
       .update({ ready: !me.ready })
       .eq("id", me.id);
   };
-
+ 
   const startGame = async () => {
     if (!isHost) return;
     if (players.length < meta.minPlayers) return;
     const first = players[0];
     if (!first) return;
+ 
+    if (isUno) {
+      const board = initUno(players.map((p) => p.player_id));
+      await supabase
+        .from("game_state")
+        .update({
+          board,
+          current_player_id: unoCurrentPlayerId(board),
+          status: "playing",
+          winner_player_id: null,
+          draw: false,
+          last_move: null,
+          move_count: 0,
+        })
+        .eq("room_id", room.id);
+      await supabase.from("rooms").update({ status: "playing" }).eq("id", room.id);
+      return;
+    }
+ 
     const board = initBoard(initial.room.game_type, meta);
     await supabase
       .from("game_state")
@@ -150,11 +204,30 @@ function RoomPage() {
       .eq("room_id", room.id);
     await supabase.from("rooms").update({ status: "playing" }).eq("id", room.id);
   };
-
+ 
   const playAgain = async () => {
     if (!isHost) return;
     const first = players[0];
     if (!first) return;
+ 
+    if (isUno) {
+      const board = initUno(players.map((p) => p.player_id));
+      await supabase
+        .from("game_state")
+        .update({
+          board,
+          current_player_id: unoCurrentPlayerId(board),
+          status: "playing",
+          winner_player_id: null,
+          draw: false,
+          last_move: null,
+          move_count: 0,
+        })
+        .eq("room_id", room.id);
+      await supabase.from("rooms").update({ status: "playing" }).eq("id", room.id);
+      return;
+    }
+ 
     const board = initBoard(initial.room.game_type, meta);
     await supabase
       .from("game_state")
@@ -170,7 +243,7 @@ function RoomPage() {
       .eq("room_id", room.id);
     await supabase.from("rooms").update({ status: "playing" }).eq("id", room.id);
   };
-
+ 
   const makeMove = async (move: number) => {
     if (!myTurn || !mySymbol || !state) return;
     if (initial.room.game_type === "tic-tac-toe") {
@@ -196,7 +269,7 @@ function RoomPage() {
       }
     }
   };
-
+ 
   const dropPiece = async (col: number) => {
     if (!myTurn || !mySymbol || !state) return;
     if (initial.room.game_type !== "connect-four") return;
@@ -220,7 +293,62 @@ function RoomPage() {
       await supabase.from("rooms").update({ status: "finished" }).eq("id", room.id);
     }
   };
-
+ 
+  const playUnoCard = async (card: UnoCard, chosenColor?: UnoColor) => {
+    if (!myTurn || !unoState || !state) return;
+    const next = unoPlayCard(unoState, playerId, card, chosenColor);
+    if (!next) return;
+    const winner = unoCheckWinner(next);
+    await supabase
+      .from("game_state")
+      .update({
+        board: next,
+        current_player_id: winner ? state.current_player_id : unoCurrentPlayerId(next),
+        status: winner ? "finished" : "playing",
+        winner_player_id: winner,
+        draw: false,
+        last_move: { card },
+        move_count: (state.move_count ?? 0) + 1,
+      })
+      .eq("room_id", room.id);
+    if (winner) {
+      await supabase.from("rooms").update({ status: "finished" }).eq("id", room.id);
+    }
+    setHasDrawnThisTurn(false);
+  };
+ 
+  const drawUnoCard = async () => {
+    if (!myTurn || !unoState || !state || hasDrawnThisTurn) return;
+    const next = unoDrawForTurn(unoState, playerId);
+    if (!next) return;
+    const stillPlayable = unoHasPlayableCard(next, playerId);
+    const finalState = stillPlayable ? next : unoPassTurn(next);
+    await supabase
+      .from("game_state")
+      .update({
+        board: finalState,
+        current_player_id: unoCurrentPlayerId(finalState),
+        last_move: { drew: true },
+        move_count: (state.move_count ?? 0) + 1,
+      })
+      .eq("room_id", room.id);
+    setHasDrawnThisTurn(stillPlayable);
+  };
+ 
+  const passUnoTurn = async () => {
+    if (!myTurn || !unoState || !state) return;
+    const next = unoPassTurn(unoState);
+    await supabase
+      .from("game_state")
+      .update({
+        board: next,
+        current_player_id: unoCurrentPlayerId(next),
+        move_count: (state.move_count ?? 0) + 1,
+      })
+      .eq("room_id", room.id);
+    setHasDrawnThisTurn(false);
+  };
+ 
   const copyInvite = async () => {
     try {
       await navigator.clipboard.writeText(inviteLink(room.code));
@@ -230,10 +358,10 @@ function RoomPage() {
       /* ignore */
     }
   };
-
+ 
   const allReady = players.length >= meta.minPlayers && players.every((p) => p.ready);
   const finished = room.status === "finished";
-
+ 
   return (
     <div className="mx-auto min-h-screen max-w-4xl px-4 py-6 sm:py-10">
       {/* top bar */}
@@ -264,7 +392,7 @@ function RoomPage() {
           </span>
         </button>
       </div>
-
+ 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_280px]">
         {/* table */}
         <div className="felt rounded-2xl p-5 sm:p-7">
@@ -272,7 +400,7 @@ function RoomPage() {
             <Lobby players={players} meta={meta} me={me} playerId={playerId} />
           ) : (
             <div className="flex flex-col items-center">
-              {initial.room.game_type === "tic-tac-toe" ? (
+              {initial.room.game_type === "tic-tac-toe" && (
                 <TicTacToeBoard
                   cells={tttCells}
                   winningLine={tttResult.line}
@@ -280,7 +408,8 @@ function RoomPage() {
                   myTurn={myTurn}
                   disabled={finished}
                 />
-              ) : (
+              )}
+              {initial.room.game_type === "connect-four" && (
                 <ConnectFourBoard
                   grid={cfGrid}
                   winningCells={cfResult.cells}
@@ -289,10 +418,30 @@ function RoomPage() {
                   disabled={finished}
                 />
               )}
-
+              {isUno && unoState && (
+                <UnoBoard
+                  hand={unoState.hands[playerId] ?? []}
+                  topDiscard={unoState.discard[unoState.discard.length - 1]!}
+                  activeColor={unoState.color}
+                  deckCount={unoState.deck.length}
+                  myTurn={myTurn}
+                  disabled={finished}
+                  hasDrawnThisTurn={hasDrawnThisTurn}
+                  onPlay={playUnoCard}
+                  onDraw={drawUnoCard}
+                  onPass={passUnoTurn}
+                />
+              )}
+ 
               {finished && (
                 <div className="mt-6 text-center">
-                  {winnerSymbol ? (
+                  {isUno ? (
+                    unoWinnerName && (
+                      <p className="text-2xl font-bold text-foreground">
+                        {state?.winner_player_id === playerId ? "You win!" : `${unoWinnerName} wins!`}
+                      </p>
+                    )
+                  ) : winnerSymbol ? (
                     <p className="text-2xl font-bold text-foreground">
                       {winnerSymbol === mySymbol ? "You win!" : `${winnerSymbol} wins!`}
                     </p>
@@ -317,7 +466,7 @@ function RoomPage() {
             </div>
           )}
         </div>
-
+ 
         {/* side panel */}
         <aside className="flex flex-col gap-4">
           <div className="rounded-2xl border-2 border-border bg-card p-4 text-card-foreground">
@@ -330,6 +479,7 @@ function RoomPage() {
                 const isMe = p.player_id === playerId;
                 const active =
                   room.status === "playing" && state?.current_player_id === p.player_id;
+                const handCount = unoState?.hands[p.player_id]?.length;
                 return (
                   <li
                     key={p.id}
@@ -339,18 +489,24 @@ function RoomPage() {
                     ].join(" ")}
                   >
                     <div className="flex items-center gap-2">
-                      <span
-                        className={[
-                          "inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold",
-                          sym === "X"
-                            ? "bg-player-x/20 text-player-x"
-                            : sym === "O"
-                              ? "bg-player-o/20 text-player-o"
-                              : "bg-secondary text-secondary-foreground",
-                        ].join(" ")}
-                      >
-                        {sym ?? "?"}
-                      </span>
+                      {isUno ? (
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-xs font-bold text-secondary-foreground">
+                          {handCount ?? "?"}
+                        </span>
+                      ) : (
+                        <span
+                          className={[
+                            "inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold",
+                            sym === "X"
+                              ? "bg-player-x/20 text-player-x"
+                              : sym === "O"
+                                ? "bg-player-o/20 text-player-o"
+                                : "bg-secondary text-secondary-foreground",
+                          ].join(" ")}
+                        >
+                          {sym ?? "?"}
+                        </span>
+                      )}
                       <span className="font-medium">
                         {p.name}
                         {isMe && <span className="text-card-muted"> (you)</span>}
@@ -380,7 +536,7 @@ function RoomPage() {
               )}
             </ul>
           </div>
-
+ 
           {room.status === "waiting" && (
             <div className="rounded-2xl border-2 border-border bg-card p-4 text-card-foreground">
               <button
@@ -420,7 +576,7 @@ function RoomPage() {
               </div>
             </div>
           )}
-
+ 
           {room.status === "playing" && (
             <div className="rounded-2xl border-2 border-border bg-card p-4 text-center text-card-foreground">
               <p className="text-sm text-card-muted">
@@ -436,12 +592,14 @@ function RoomPage() {
                   </>
                 )}
               </p>
-              <p className="mt-1 text-xs text-card-muted">
-                You play{" "}
-                <span className={mySymbol === "X" ? "font-semibold text-player-x" : "font-semibold text-player-o"}>
-                  {mySymbol}
-                </span>
-              </p>
+              {!isUno && (
+                <p className="mt-1 text-xs text-card-muted">
+                  You play{" "}
+                  <span className={mySymbol === "X" ? "font-semibold text-player-x" : "font-semibold text-player-o"}>
+                    {mySymbol}
+                  </span>
+                </p>
+              )}
             </div>
           )}
         </aside>
@@ -449,7 +607,7 @@ function RoomPage() {
     </div>
   );
 }
-
+ 
 function Lobby({
   players,
   meta,
@@ -476,3 +634,4 @@ function Lobby({
     </div>
   );
 }
+ 
