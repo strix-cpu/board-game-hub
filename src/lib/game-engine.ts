@@ -151,7 +151,10 @@ export function cfWinner(b: CFBoard): CFResult {
 /* ----------------------------- Generic helpers ----------------------------- */
 
 /** Initialize the stored board JSON for a game type. */
-export function initBoard(gameType: string, meta: GameTypeMeta): Record<string, unknown> {
+export function initBoard(
+  gameType: string,
+  meta: GameTypeMeta,
+): { cells: TTTBoard } | { grid: CFBoard } | Record<string, never> {
   if (gameType === "tic-tac-toe") return { cells: tttInit() };
   if (gameType === "connect-four") return { grid: cfInit(meta.rows, meta.cols) };
   return {};
