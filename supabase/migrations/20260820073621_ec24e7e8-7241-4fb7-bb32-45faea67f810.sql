@@ -1,0 +1,2 @@
+create or replace function public.touch_updated_at() returns trigger language plpgsql set search_path = public as $$ begin new.updated_at = now(); return new; end $$;
+create or replace function public.assign_seat() returns trigger language plpgsql set search_path = public as $$ declare next_seat int; begin select coalesce(max(seat), -1) + 1 into next_seat from public.room_players where room_id = new.room_id; new.seat = next_seat; if new.symbol is null then new.symbol = case next_seat % 2 when 0 then 'X' else 'O' end; end if; return new; end $$;
