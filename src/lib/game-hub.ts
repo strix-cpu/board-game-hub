@@ -56,12 +56,12 @@ export interface PlayerRow {
 
 export interface GameStateRow {
   room_id: string;
-  board: Record<string, unknown>;
+  board: unknown;
   current_player_id: string | null;
   status: string;
   winner_player_id: string | null;
   draw: boolean;
-  last_move: Record<string, unknown> | null;
+  last_move: unknown;
   move_count: number;
   updated_at: string;
 }
