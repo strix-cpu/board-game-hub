@@ -104,12 +104,12 @@ function RoomPage() {
 
   // ---- board parsing ----
   const tttCells: TTTBoard = useMemo(() => {
-    const cells = (state?.board?.cells as TTTBoard | undefined) ?? tttInit();
-    return cells;
+    const b = state?.board as { cells?: TTTBoard } | undefined;
+    return b?.cells ?? tttInit();
   }, [state]);
   const cfGrid: CFBoard = useMemo(() => {
-    const grid = (state?.board?.grid as CFBoard | undefined) ?? cfInit(meta.rows, meta.cols);
-    return grid;
+    const b = state?.board as { grid?: CFBoard } | undefined;
+    return b?.grid ?? cfInit(meta.rows, meta.cols);
   }, [state, meta]);
 
   const tttResult = useMemo(() => tttWinner(tttCells), [tttCells]);
