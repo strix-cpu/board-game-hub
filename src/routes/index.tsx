@@ -125,7 +125,7 @@ function Index() {
                   <h3 className="mt-3 text-2xl font-bold text-card-foreground">
                     {g.name}
                   </h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{g.tagline}</p>
+                  <p className="mt-1 text-sm text-card-muted">{g.tagline}</p>
                 </div>
                 <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
                   {g.minPlayers === g.maxPlayers

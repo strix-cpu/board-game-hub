@@ -308,7 +308,7 @@ function RoomPage() {
                       Play again
                     </button>
                   ) : (
-                    <p className="mt-4 text-sm text-muted-foreground">
+                    <p className="mt-4 text-sm text-card-muted">
                       Waiting for the host to start a new round…
                     </p>
                   )}
@@ -321,7 +321,7 @@ function RoomPage() {
         {/* side panel */}
         <aside className="flex flex-col gap-4">
           <div className="rounded-2xl border-2 border-border bg-card p-4 text-card-foreground">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-card-muted">
               Players
             </h2>
             <ul className="mt-3 space-y-2">
@@ -353,7 +353,7 @@ function RoomPage() {
                       </span>
                       <span className="font-medium">
                         {p.name}
-                        {isMe && <span className="text-muted-foreground"> (you)</span>}
+                        {isMe && <span className="text-card-muted"> (you)</span>}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -364,7 +364,7 @@ function RoomPage() {
                         (p.ready ? (
                           <span className="text-xs text-primary">✓ ready</span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">…</span>
+                          <span className="text-xs text-card-muted">…</span>
                         ))}
                       {active && (
                         <span className="text-xs font-medium text-primary">turn</span>
@@ -374,7 +374,7 @@ function RoomPage() {
                 );
               })}
               {players.length < meta.maxPlayers && room.status === "waiting" && (
-                <li className="rounded-lg border border-dashed border-border px-3 py-2 text-center text-sm text-muted-foreground">
+                <li className="rounded-lg border border-dashed border-border px-3 py-2 text-center text-sm text-card-muted">
                   Waiting for {meta.maxPlayers - players.length} more…
                 </li>
               )}
@@ -407,11 +407,11 @@ function RoomPage() {
                 </button>
               )}
               {!isHost && (
-                <p className="mt-2 text-center text-xs text-muted-foreground">
+                <p className="mt-2 text-center text-xs text-card-muted">
                   The host will start the game.
                 </p>
               )}
-              <div className="mt-3 rounded-lg bg-secondary/30 p-3 text-sm text-muted-foreground">
+              <div className="mt-3 rounded-lg bg-secondary/30 p-3 text-sm text-card-muted">
                 <p className="font-medium text-secondary-foreground">How to play</p>
                 <p className="mt-1">
                   Share the room code <span className="font-mono">{room.code}</span> with your
@@ -423,7 +423,7 @@ function RoomPage() {
 
           {room.status === "playing" && (
             <div className="rounded-2xl border-2 border-border bg-card p-4 text-center text-card-foreground">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-card-muted">
                 {myTurn ? (
                   <span className="font-semibold text-primary">Your turn!</span>
                 ) : (
@@ -436,7 +436,7 @@ function RoomPage() {
                   </>
                 )}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-xs text-card-muted">
                 You play{" "}
                 <span className={mySymbol === "X" ? "font-semibold text-player-x" : "font-semibold text-player-o"}>
                   {mySymbol}
