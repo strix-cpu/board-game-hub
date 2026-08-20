@@ -168,11 +168,13 @@ function RoomPage() {
   const startGame = async () => {
     if (!isHost) return;
     if (players.length < meta.minPlayers) return;
-    const first = players[0];
+    const first = players[Math.floor(Math.random() * players.length)];
     if (!first) return;
  
     if (isUno) {
-      const board = initUno(players.map((p) => p.player_id));
+      // shuffle the seat order too, so it's not always host-first
+      const shuffledIds = [...players.map((p) => p.player_id)].sort(() => Math.random() - 0.5);
+      const board = initUno(shuffledIds);
       await supabase
         .from("game_state")
         .update({
@@ -207,11 +209,12 @@ function RoomPage() {
  
   const playAgain = async () => {
     if (!isHost) return;
-    const first = players[0];
+    const first = players[Math.floor(Math.random() * players.length)];
     if (!first) return;
  
     if (isUno) {
-      const board = initUno(players.map((p) => p.player_id));
+      const shuffledIds = [...players.map((p) => p.player_id)].sort(() => Math.random() - 0.5);
+      const board = initUno(shuffledIds);
       await supabase
         .from("game_state")
         .update({
