@@ -1,5 +1,5 @@
 // Pure, client-safe game logic for the board game hub.
-// No Supabase / React imports here so it can be unit-tested and shared.
+// No Supabase / React imports here so it can be shared and tested.
 
 export type PlayerSymbol = "X" | "O";
 
@@ -12,7 +12,7 @@ export interface GameTypeMeta {
   rows: number;
   cols: number;
   emoji: string;
-  accent: string; // tailwind-ish descriptor for UI flavor
+  accent: string;
 }
 
 export const GAMES: GameTypeMeta[] = [
@@ -52,7 +52,7 @@ export function tttInit(): TTTBoard {
   return Array(9).fill(null);
 }
 
-const TTT_LINES: number[][] = [
+const TTT_LINES: [number, number, number][] = [
   [0, 1, 2],
   [3, 4, 5],
   [6, 7, 8],
@@ -72,8 +72,9 @@ export interface TTTResult {
 export function tttWinner(b: TTTBoard): TTTResult {
   for (const line of TTT_LINES) {
     const [a, b1, c] = line;
-    if (b[a] && b[a] === b[b1] && b[a] === b[c]) {
-      return { winner: b[a] as PlayerSymbol, line, draw: false };
+    const va = b[a];
+    if (va && va === b[b1] && va === b[c]) {
+      return { winner: va, line: [...line], draw: false };
     }
   }
   return { winner: null, line: null, draw: b.every(Boolean) };
@@ -84,7 +85,7 @@ export function tttWinner(b: TTTBoard): TTTResult {
 export type CFBoard = (PlayerSymbol | null)[][]; // [row][col], row 0 = top
 
 export function cfInit(rows = 6, cols = 7): CFBoard {
-  return Array.from({ length: rows }, () => Array(cols).fill(null));
+  return Array.from({ length: rows }, () => Array<PlayerSymbol | null>(cols).fill(null));
 }
 
 export function cfDrop(
@@ -93,9 +94,11 @@ export function cfDrop(
   sym: PlayerSymbol,
 ): { board: CFBoard; row: number } | null {
   for (let r = b.length - 1; r >= 0; r--) {
-    if (!b[r][col]) {
-      const nb = b.map((row) => row.slice());
-      nb[r][col] = sym;
+    const row = b[r];
+    if (row && !row[col]) {
+      const nb = b.map((rr) => rr.slice());
+      const nbRow = nb[r];
+      if (nbRow) nbRow[col] = sym;
       return { board: nb, row: r };
     }
   }
@@ -118,8 +121,10 @@ export function cfWinner(b: CFBoard): CFResult {
     [1, -1],
   ];
   for (let r = 0; r < rows; r++) {
+    const row = b[r];
+    if (!row) continue;
     for (let c = 0; c < cols; c++) {
-      const s = b[r][c];
+      const s = row[c];
       if (!s) continue;
       for (const [dr, dc] of dirs) {
         const cells: [number, number][] = [[r, c]];
@@ -127,11 +132,12 @@ export function cfWinner(b: CFBoard): CFResult {
           const nr = r + dr * k;
           const nc = c + dc * k;
           if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) break;
-          if (b[nr][nc] !== s) break;
+          const cell = b[nr]?.[nc];
+          if (cell !== s) break;
           cells.push([nr, nc]);
         }
         if (cells.length >= 4) {
-          return { winner: s as PlayerSymbol, cells, draw: false };
+          return { winner: s, cells, draw: false };
         }
       }
     }
