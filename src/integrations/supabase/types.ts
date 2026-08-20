@@ -14,7 +14,121 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      game_state: {
+        Row: {
+          board: Json
+          current_player_id: string | null
+          draw: boolean
+          last_move: Json | null
+          move_count: number
+          room_id: string
+          status: string
+          updated_at: string
+          winner_player_id: string | null
+        }
+        Insert: {
+          board?: Json
+          current_player_id?: string | null
+          draw?: boolean
+          last_move?: Json | null
+          move_count?: number
+          room_id: string
+          status?: string
+          updated_at?: string
+          winner_player_id?: string | null
+        }
+        Update: {
+          board?: Json
+          current_player_id?: string | null
+          draw?: boolean
+          last_move?: Json | null
+          move_count?: number
+          room_id?: string
+          status?: string
+          updated_at?: string
+          winner_player_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_state_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: true
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      room_players: {
+        Row: {
+          id: string
+          joined_at: string
+          name: string
+          player_id: string
+          ready: boolean
+          room_id: string
+          seat: number | null
+          symbol: string | null
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          name: string
+          player_id: string
+          ready?: boolean
+          room_id: string
+          seat?: number | null
+          symbol?: string | null
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          name?: string
+          player_id?: string
+          ready?: boolean
+          room_id?: string
+          seat?: number | null
+          symbol?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_players_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rooms: {
+        Row: {
+          code: string
+          created_at: string
+          game_type: string
+          host_player_id: string
+          id: string
+          max_players: number
+          status: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          game_type: string
+          host_player_id: string
+          id?: string
+          max_players?: number
+          status?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          game_type?: string
+          host_player_id?: string
+          id?: string
+          max_players?: number
+          status?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
