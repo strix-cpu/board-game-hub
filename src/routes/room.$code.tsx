@@ -34,7 +34,7 @@ export const Route = createFileRoute("/room/$code")({
   head: ({ loaderData }) => ({
     meta: [
       {
-        title: `Room ${loaderData.room.code} — Game Night`,
+        title: `Room ${loaderData?.room?.code ?? ""} — Game Night`,
       },
       { name: "robots", content: "noindex" },
     ],
