@@ -193,93 +193,142 @@
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* ---- Game motion library (Monopoly / Catan) ---- */
+/* ═══════════════════════════════════════════════════════
+   Game Animations — Monopoly & Catan
+   ═══════════════════════════════════════════════════════ */
 
-@utility token-hop {
-  animation: token-hop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+/* --- Monopoly Animations --- */
+
+@utility dice-roll {
+  animation: dice-roll 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-@keyframes token-hop {
-  0% { transform: translateY(0) scale(1); }
-  40% { transform: translateY(-70%) scale(1.35); }
-  70% { transform: translateY(-12%) scale(1.1); }
-  100% { transform: translateY(0) scale(1); }
+@keyframes dice-roll {
+  0% { transform: rotate(0deg) scale(0.5); opacity: 0; }
+  30% { transform: rotate(180deg) scale(1.3); opacity: 1; }
+  50% { transform: rotate(360deg) scale(0.9); }
+  70% { transform: rotate(540deg) scale(1.1); }
+  100% { transform: rotate(720deg) scale(1); }
 }
 
-@utility dice-tumble {
-  animation: dice-tumble 0.62s cubic-bezier(0.3, 1.3, 0.5, 1);
+@utility token-slide {
+  animation: token-slide 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-@keyframes dice-tumble {
-  0% { transform: rotate(0deg) scale(0.7); }
-  35% { transform: rotate(220deg) scale(1.18); }
-  70% { transform: rotate(340deg) scale(0.94); }
-  100% { transform: rotate(360deg) scale(1); }
+@keyframes token-slide {
+  0% { transform: scale(0.3); opacity: 0; }
+  60% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
-@utility flash-up {
-  animation: flash-up 1.1s ease-out forwards;
+@utility card-flip {
+  animation: card-flip 0.4s ease-out;
 }
 
-@keyframes flash-up {
-  0% { transform: translateY(6px); opacity: 0; }
-  20% { transform: translateY(-2px); opacity: 1; }
-  100% { transform: translateY(-26px); opacity: 0; }
+@keyframes card-flip {
+  0% { transform: perspective(400px) rotateY(90deg); opacity: 0; }
+  100% { transform: perspective(400px) rotateY(0deg); opacity: 1; }
 }
 
-@utility slide-down-in {
-  animation: slide-down-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+@utility property-pulse {
+  animation: property-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes slide-down-in {
-  0% { transform: translateY(-14px) scale(0.96); opacity: 0; }
-  100% { transform: translateY(0) scale(1); opacity: 1; }
+@keyframes property-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
+  50% { box-shadow: 0 0 20px 4px rgba(234, 179, 8, 0.4); }
 }
 
-@utility glow-pulse {
-  animation: glow-pulse 1.6s ease-in-out infinite;
+@utility money-fly {
+  animation: money-fly 0.6s ease-out;
 }
 
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(0.74 0.165 75 / 0.55); }
-  50% { box-shadow: 0 0 0 6px oklch(0.74 0.165 75 / 0); }
+@keyframes money-fly {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-40px) scale(0.6); opacity: 0; }
 }
 
-@utility svg-pulse {
-  animation: svg-pulse 1.5s ease-in-out infinite;
-  transform-box: fill-box;
-  transform-origin: center;
+/* --- Catan Animations --- */
+
+@utility hex-glow {
+  animation: hex-glow 0.8s ease-out;
 }
 
-@keyframes svg-pulse {
-  0%, 100% { opacity: 0.55; transform: scale(0.85); }
-  50% { opacity: 1; transform: scale(1.25); }
+@keyframes hex-glow {
+  0% { filter: brightness(1); }
+  40% { filter: brightness(1.6) drop-shadow(0 0 8px rgba(234, 179, 8, 0.6)); }
+  100% { filter: brightness(1); }
 }
 
-@utility shake-x {
-  animation: shake-x 0.4s ease-in-out;
+@utility build-pop {
+  animation: build-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-@keyframes shake-x {
+@keyframes build-pop {
+  0% { transform: scale(0) rotate(-30deg); opacity: 0; }
+  60% { transform: scale(1.3) rotate(5deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@utility robber-shake {
+  animation: robber-shake 0.5s ease-in-out;
+}
+
+@keyframes robber-shake {
   0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-5px); }
-  40% { transform: translateX(5px); }
-  60% { transform: translateX(-3px); }
-  80% { transform: translateX(3px); }
+  15% { transform: translateX(-4px) rotate(-5deg); }
+  30% { transform: translateX(4px) rotate(5deg); }
+  45% { transform: translateX(-3px) rotate(-3deg); }
+  60% { transform: translateX(3px) rotate(3deg); }
+  75% { transform: translateX(-1px); }
 }
 
-@utility confetti-rise {
-  animation: confetti-rise 1.2s ease-out infinite;
+@utility resource-collect {
+  animation: resource-collect 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-@keyframes confetti-rise {
-  0% { transform: translateY(0) rotate(0deg); opacity: 0; }
-  20% { opacity: 1; }
-  100% { transform: translateY(-70px) rotate(220deg); opacity: 0; }
+@keyframes resource-collect {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .token-hop, .dice-tumble, .flash-up, .slide-down-in, .glow-pulse, .svg-pulse, .shake-x, .confetti-rise {
-    animation: none !important;
-  }
+@utility achievement-glow {
+  animation: achievement-glow 1s ease-in-out;
 }
+
+@keyframes achievement-glow {
+  0% { text-shadow: 0 0 0 rgba(234, 179, 8, 0); }
+  50% { text-shadow: 0 0 20px rgba(234, 179, 8, 0.8), 0 0 40px rgba(234, 179, 8, 0.4); }
+  100% { text-shadow: 0 0 0 rgba(234, 179, 8, 0); }
+}
+
+@utility road-place {
+  animation: road-place 0.3s ease-out;
+}
+
+@keyframes road-place {
+  0% { stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0; }
+  100% { stroke-dasharray: 100; stroke-dashoffset: 0; opacity: 1; }
+}
+
+/* --- Shared UI Animations --- */
+
+@utility shimmer {
+  animation: shimmer 2s infinite linear;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@utility float-up {
+  animation: float-up 1s ease-out forwards;
+}
+
+@keyframes float-up {
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+

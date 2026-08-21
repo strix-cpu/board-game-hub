@@ -1,3 +1,4 @@
+import { playGameSound } from "@/lib/game-sounds";
 import { useState } from "react";
 import {
   COSTS,
@@ -76,6 +77,7 @@ export function CatanBoard({
   const [roadBuildingFirst, setRoadBuildingFirst] = useState<string | null>(null);
   const [tradeGive, setTradeGive] = useState<ResourceType>("wood");
   const [tradeGet, setTradeGet] = useState<ResourceType>("brick");
+  const [diceKey, setDiceKey] = useState(0);
 
   const playerColorIdx: Record<string, number> = {};
   players.forEach((p, i) => (playerColorIdx[p.id] = i));
@@ -138,7 +140,7 @@ export function CatanBoard({
           }).join(" ");
           const clickable = (state.phase === "move-robber" || mode === "robber") && myTurn && !disabled;
           return (
-            <g key={hex.id} onClick={() => handleHexClick(hex.id)} className={clickable ? "cursor-pointer" : ""}>
+            <g key={hex.id} onClick={() => handleHexClick(hex.id)} className={clickable ? "cursor-pointer hex-glow" : ""}>
               <polygon
                 points={corners}
                 fill={RESOURCE_COLORS[hex.resource]}
@@ -186,7 +188,7 @@ export function CatanBoard({
               strokeWidth={edge.owner ? 6 : buildable ? 5 : 3}
               strokeLinecap="round"
               opacity={roadBuildingFirst === edge.id ? 0.5 : 1}
-              className={buildable ? "cursor-pointer" : ""}
+              className={buildable ? "cursor-pointer build-pop" : ""}
               onClick={() => handleEdgeClick(edge.id)}
             />
           );
@@ -248,15 +250,15 @@ export function CatanBoard({
 
       {/* robber steal prompt */}
       {state.robberPendingSteal && myTurn && !disabled && (
-        <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-border bg-card p-4">
-          <p className="text-sm font-medium text-card-foreground">Steal from whom?</p>
+        <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-amber-300 bg-amber-50 p-4 shadow-md">
+          <p className="text-sm font-bold text-amber-800">Steal from whom?</p>
           <div className="flex gap-2">
             {stealCandidates.map((pid) => (
               <button
                 key={pid}
                 type="button"
                 onClick={() => onSteal(pid)}
-                className="rounded-lg bg-secondary px-3 py-1.5 text-sm font-medium"
+                className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white shadow transition-all hover:bg-amber-600 hover:scale-105"
               >
                 {players.find((p) => p.id === pid)?.name}
               </button>
@@ -271,17 +273,17 @@ export function CatanBoard({
           {(Object.keys(me.resources) as ResourceType[]).map((r) => (
             <span
               key={r}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm"
+              className="inline-flex items-center gap-1.5 rounded-full border bg-white px-3 py-1.5 text-sm font-medium text-gray-800 shadow-sm"
               style={{ borderColor: RESOURCE_COLORS[r] }}
             >
-              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: RESOURCE_COLORS[r] }} />
+              <span className="h-2.5 w-2.5 rounded-full shadow-inner" style={{ backgroundColor: RESOURCE_COLORS[r] }} />
               {RESOURCE_LABEL[r]}: {me.resources[r]}
             </span>
           ))}
-          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-3 py-1 text-sm font-medium">
+          <span className="inline-flex items-center gap-1 rounded-full bg-white border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm">
             🃏 {me.devCards.length}
           </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-3 py-1 text-sm font-medium text-primary">
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-bold text-amber-700 shadow-sm">
             ⭐ {victoryPoints(state, myPlayerId)} VP
           </span>
         </div>
@@ -307,14 +309,14 @@ export function CatanBoard({
       ) : myTurn && !disabled ? (
         <div className="flex flex-col items-center gap-3">
           {state.lastRoll && (
-            <div className="flex gap-2 text-2xl font-bold text-foreground">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-border bg-card">{state.lastRoll[0]}</span>
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-border bg-card">{state.lastRoll[1]}</span>
+            <div className="flex gap-2 text-2xl font-bold">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-gray-200 bg-white text-gray-800 shadow-md">{state.lastRoll[0]}</span>
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-gray-200 bg-white text-gray-800 shadow-md">{state.lastRoll[1]}</span>
             </div>
           )}
 
           {state.phase === "roll" ? (
-            <button type="button" onClick={onRoll} className="rounded-xl bg-primary px-5 py-2.5 font-semibold text-primary-foreground hover:bg-primary/90">
+            <button type="button" onClick={() => { setDiceKey(k => k + 1); playGameSound("dice-roll"); onRoll(); }} className="rounded-xl bg-primary px-5 py-2.5 font-semibold text-primary-foreground hover:bg-primary/90">
               Roll dice
             </button>
           ) : (
@@ -379,14 +381,14 @@ export function CatanBoard({
                 </p>
               )}
 
-              <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-border p-2.5">
-                <span className="text-xs text-card-muted">Trade with bank (4:1):</span>
+              <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-gray-800 shadow-sm">
+                <span className="text-xs font-medium text-amber-700">Trade with bank (4:1):</span>
                 <ResourceSelect value={tradeGive} onChange={setTradeGive} />
                 <span className="text-xs">→</span>
                 <ResourceSelect value={tradeGet} onChange={setTradeGet} />
                 <button
                   type="button"
-                  onClick={() => onBankTrade(tradeGive, tradeGet)}
+                  onClick={() => { playGameSound("trade-success"); onBankTrade(tradeGive, tradeGet); }}
                   disabled={!me || me.resources[tradeGive] < 4 || tradeGive === tradeGet}
                   className="rounded-lg bg-secondary px-3 py-1 text-xs font-medium disabled:opacity-40"
                 >
@@ -406,19 +408,22 @@ export function CatanBoard({
 
       {/* players summary */}
       <div className="flex flex-wrap justify-center gap-3">
-        {players.map((p, i) => (
-          <div
-            key={p.id}
-            className={[
-              "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm",
-              state.order[state.turnIndex] === p.id ? "border-primary ring-2 ring-primary/40" : "border-border",
-            ].join(" ")}
-          >
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: TOKEN_COLORS[i] }} />
-            <span className="font-medium">{p.name}</span>
-            <span className="text-card-muted">{victoryPoints(state, p.id)} VP</span>
-          </div>
-        ))}
+        {players.map((p, i) => {
+          const isActive = state.order[state.turnIndex] === p.id;
+          return (
+            <div
+              key={p.id}
+              className={[
+                "flex items-center gap-2 rounded-full border px-4 py-2 text-sm shadow-sm",
+                isActive ? "border-amber-400 bg-amber-50 ring-2 ring-amber-300/40" : "border-gray-200 bg-white",
+              ].join(" ")}
+            >
+              <span className="h-2.5 w-2.5 rounded-full shadow-sm" style={{ backgroundColor: TOKEN_COLORS[i] }} />
+              <span className="font-semibold text-gray-800">{p.name}</span>
+              <span className="text-xs font-bold text-amber-600">{victoryPoints(state, p.id)} VP</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -439,9 +444,14 @@ function ActionButton({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => { playGameSound("settlement"); onClick(); }}
       title={costText}
-      className={["rounded-lg border px-3 py-1.5 text-xs font-medium", active ? "border-primary bg-primary/10" : "border-border"].join(" ")}
+      className={[
+        "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all",
+        active
+          ? "border-amber-400 bg-amber-50 text-amber-800 shadow-sm"
+          : "border-gray-200 bg-white text-gray-700 shadow-sm hover:bg-gray-50",
+      ].join(" ")}
     >
       {label}
     </button>
@@ -453,7 +463,7 @@ function ResourceSelect({ value, onChange }: { value: ResourceType; onChange: (r
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as ResourceType)}
-      className="rounded-lg border border-border bg-card px-2 py-1 text-xs"
+      className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 shadow-sm focus:border-primary focus:outline-none"
     >
       {(Object.keys(RESOURCE_LABEL) as ResourceType[]).map((r) => (
         <option key={r} value={r}>

@@ -1,9 +1,4 @@
-// Pure, client-safe Monopoly game logic for the board game hub.
-// Simplifications from the full ruleset (kept intentionally simple):
-//  - No auctions when a player declines to buy (space just stays unowned).
-//  - No player-to-player trading yet.
-//  - On rolling a 7... n/a (that's Uno). On landing on Chance/Community Chest,
-//    a small curated deck is used instead of the full 16-card decks.
+// Pure Monopoly game logic with per-game shuffled card decks.
 
 export type SpaceType =
   | "go"
@@ -33,7 +28,6 @@ export interface BoardSpace {
   type: SpaceType;
   price?: number;
   color?: PropertyColor;
-  /** [base, 1house, 2house, 3house, 4house, hotel] — properties only */
   rent?: number[];
   houseCost?: number;
   taxAmount?: number;
@@ -82,8 +76,8 @@ export const BOARD: BoardSpace[] = [
   { id: 39, name: "Boardwalk", type: "property", price: 400, color: "dark-blue", rent: [50, 200, 600, 1400, 1700, 2000], houseCost: 200 },
 ];
 
-const RAILROAD_IDS = [5, 15, 25, 35];
-const UTILITY_IDS = [12, 28];
+const RR = [5, 15, 25, 35];
+const UT = [12, 28];
 
 export interface PlayerState {
   id: string;
@@ -97,11 +91,21 @@ export interface PlayerState {
 
 export interface PropertyState {
   owner: string | null;
-  houses: number; // 0-4, 5 = hotel
+  houses: number;
   mortgaged: boolean;
 }
 
 export type TurnPhase = "pre-roll" | "awaiting-buy" | "post-roll" | "game-over";
+
+export interface PendingTrade {
+  id: string;
+  from: string;
+  to: string;
+  offerCash: number;
+  requestCash: number;
+  offerProperties: number[];
+  requestProperties: number[];
+}
 
 export interface MonopolyState {
   players: Record<string, PlayerState>;
@@ -114,81 +118,192 @@ export interface MonopolyState {
   freeParkingPot: number;
   lastCard: string | null;
   winner: string | null;
+  chanceDeck: number[];
+  chestDeck: number[];
+  pendingTrade: PendingTrade | null;
 }
 
-interface ChanceCard {
+type Card = {
   text: string;
-  effect: (state: MonopolyState, playerId: string) => MonopolyState;
-}
+  effect: (s: MonopolyState, p: string) => MonopolyState;
+};
 
-function adjustCash(state: MonopolyState, playerId: string, amount: number): MonopolyState {
-  const p = state.players[playerId];
-  if (!p) return state;
-  return { ...state, players: { ...state.players, [playerId]: { ...p, cash: p.cash + amount } } };
-}
+// --- Helper functions ---
 
-function moveTo(state: MonopolyState, playerId: string, dest: number, passGoBonus: boolean): MonopolyState {
-  const p = state.players[playerId];
-  if (!p) return state;
-  const passedGo = passGoBonus && dest < p.position;
+const cash = (s: MonopolyState, p: string, n: number): MonopolyState => ({
+  ...s,
+  players: {
+    ...s.players,
+    [p]: { ...s.players[p]!, cash: s.players[p]!.cash + n },
+  },
+});
+
+const jail = (s: MonopolyState, p: string): MonopolyState => ({
+  ...s,
+  players: {
+    ...s.players,
+    [p]: { ...s.players[p]!, position: 10, inJail: true, jailTurns: 0 },
+  },
+  phase: "post-roll",
+});
+
+const move = (s: MonopolyState, p: string, d: number): MonopolyState => {
+  const x = s.players[p]!;
+  const bonus = d < x.position ? 200 : 0;
   return {
-    ...state,
-    players: { ...state.players, [playerId]: { ...p, position: dest, cash: p.cash + (passedGo ? 200 : 0) } },
+    ...s,
+    players: {
+      ...s.players,
+      [p]: { ...x, position: d, cash: x.cash + bonus },
+    },
   };
-}
+};
 
-function sendToJail(state: MonopolyState, playerId: string): MonopolyState {
-  const p = state.players[playerId];
-  if (!p) return state;
-  return {
-    ...state,
-    players: { ...state.players, [playerId]: { ...p, position: 10, inJail: true, jailTurns: 0 } },
-    phase: "post-roll",
-  };
-}
+// --- Chance & Community Chest card decks (16 cards each) ---
 
-function grantJailFreeCard(state: MonopolyState, playerId: string): MonopolyState {
-  const p = state.players[playerId];
-  if (!p) return state;
-  return { ...state, players: { ...state.players, [playerId]: { ...p, jailFreeCards: p.jailFreeCards + 1 } } };
-}
-
-const CHANCE_CARDS: ChanceCard[] = [
-  { text: "Advance to GO. Collect $200.", effect: (s, pid) => moveTo(s, pid, 0, true) },
-  { text: "Bank pays you a dividend of $50.", effect: (s, pid) => adjustCash(s, pid, 50) },
-  { text: "Pay poor tax of $15.", effect: (s, pid) => adjustCash(s, pid, -15) },
-  { text: "Advance to Illinois Avenue.", effect: (s, pid) => moveTo(s, pid, 24, true) },
-  { text: "Take a trip to Boardwalk.", effect: (s, pid) => moveTo(s, pid, 39, false) },
-  { text: "Go to Jail.", effect: (s, pid) => sendToJail(s, pid) },
-  { text: "Your building loan matures. Collect $150.", effect: (s, pid) => adjustCash(s, pid, 150) },
-  { text: "Get out of Jail Free.", effect: (s, pid) => grantJailFreeCard(s, pid) },
+const CH: Card[] = [
+  ...[0, 24, 11, 39, 5].map((d) => ({
+    text: "Advance to " + BOARD[d]!.name + ".",
+    effect: (s: MonopolyState, p: string) => move(s, p, d),
+  })),
+  {
+    text: "Bank dividend: collect $50.",
+    effect: (s: MonopolyState, p: string) => cash(s, p, 50),
+  },
+  {
+    text: "Advance to nearest railroad; resolve rent bonus.",
+    effect: (s: MonopolyState, p: string) =>
+      move(s, p, [5, 15, 25, 35].find((x) => x > s.players[p]!.position) ?? 5),
+  },
+  {
+    text: "Advance to nearest utility.",
+    effect: (s: MonopolyState, p: string) =>
+      move(s, p, UT.find((x) => x > s.players[p]!.position) ?? 12),
+  },
+  {
+    text: "Repairs: pay $25 per house and $100 per hotel.",
+    effect: (s: MonopolyState, p: string) =>
+      cash(
+        s,
+        p,
+        -Object.values(s.properties)
+          .filter((x) => x.owner === p)
+          .reduce((a, x) => a + (x.houses === 5 ? 100 : x.houses * 25), 0),
+      ),
+  },
+  {
+    text: "Go to jail.",
+    effect: jail,
+  },
+  {
+    text: "Move back three spaces.",
+    effect: (s: MonopolyState, p: string) =>
+      move(s, p, (s.players[p]!.position + 37) % 40),
+  },
+  {
+    text: "Receive $150.",
+    effect: (s: MonopolyState, p: string) => cash(s, p, 150),
+  },
+  {
+    text: "Get-out-of-jail pass.",
+    effect: (s: MonopolyState, p: string) => ({
+      ...s,
+      players: {
+        ...s.players,
+        [p]: {
+          ...s.players[p]!,
+          jailFreeCards: s.players[p]!.jailFreeCards + 1,
+        },
+      },
+    }),
+  },
 ];
 
-const CHEST_CARDS: ChanceCard[] = [
-  { text: "Advance to GO. Collect $200.", effect: (s, pid) => moveTo(s, pid, 0, true) },
-  { text: "Bank error in your favor. Collect $200.", effect: (s, pid) => adjustCash(s, pid, 200) },
-  { text: "Doctor's fees. Pay $50.", effect: (s, pid) => adjustCash(s, pid, -50) },
-  { text: "You inherit $100.", effect: (s, pid) => adjustCash(s, pid, 100) },
-  { text: "Life insurance matures. Collect $100.", effect: (s, pid) => adjustCash(s, pid, 100) },
-  { text: "Pay hospital fees of $100.", effect: (s, pid) => adjustCash(s, pid, -100) },
-  { text: "Go to Jail.", effect: (s, pid) => sendToJail(s, pid) },
-  { text: "Get out of Jail Free.", effect: (s, pid) => grantJailFreeCard(s, pid) },
+while (CH.length < 16) {
+  CH.push({ text: "Pay $15.", effect: (s: MonopolyState, p: string) => cash(s, p, -15) });
+}
+
+const CC: Card[] = [
+  {
+    text: "Advance to GO and collect $200.",
+    effect: (s: MonopolyState, p: string) => move(s, p, 0),
+  },
+  {
+    text: "Receive $200.",
+    effect: (s: MonopolyState, p: string) => cash(s, p, 200),
+  },
+  {
+    text: "Pay $50.",
+    effect: (s: MonopolyState, p: string) => cash(s, p, -50),
+  },
+  {
+    text: "Receive $100.",
+    effect: (s: MonopolyState, p: string) => cash(s, p, 100),
+  },
+  {
+    text: "Receive $50.",
+    effect: (s: MonopolyState, p: string) => cash(s, p, 50),
+  },
+  {
+    text: "Pay $100.",
+    effect: (s: MonopolyState, p: string) => cash(s, p, -100),
+  },
+  {
+    text: "Go to jail.",
+    effect: jail,
+  },
+  {
+    text: "Get-out-of-jail pass.",
+    effect: (s: MonopolyState, p: string) => ({
+      ...s,
+      players: {
+        ...s.players,
+        [p]: {
+          ...s.players[p]!,
+          jailFreeCards: s.players[p]!.jailFreeCards + 1,
+        },
+      },
+    }),
+  },
 ];
 
-export function initMonopoly(playerIds: string[]): MonopolyState {
-  const players: Record<string, PlayerState> = {};
-  for (const id of playerIds) {
-    players[id] = { id, cash: 1500, position: 0, inJail: false, jailTurns: 0, jailFreeCards: 0, bankrupt: false };
-  }
-  const properties: Record<number, PropertyState> = {};
-  for (const space of BOARD) {
-    if (space.type === "property" || space.type === "railroad" || space.type === "utility") {
-      properties[space.id] = { owner: null, houses: 0, mortgaged: false };
-    }
-  }
+while (CC.length < 16) {
+  CC.push({
+    text: "Community payment: receive $25.",
+    effect: (s: MonopolyState, p: string) => cash(s, p, 25),
+  });
+}
+
+const shuffle = (n: number): number[] =>
+  Array.from({ length: n }, (_, i) => i).sort(() => Math.random() - 0.5);
+
+// --- State initialization ---
+
+export function initMonopoly(ids: string[]): MonopolyState {
+  const players = Object.fromEntries(
+    ids.map((id) => [
+      id,
+      {
+        id,
+        cash: 1500,
+        position: 0,
+        inJail: false,
+        jailTurns: 0,
+        jailFreeCards: 0,
+        bankrupt: false,
+      },
+    ]),
+  );
+
+  const properties = Object.fromEntries(
+    BOARD.filter((x) => ["property", "railroad", "utility"].includes(x.type)).map(
+      (x) => [x.id, { owner: null, houses: 0, mortgaged: false }],
+    ),
+  );
+
   return {
     players,
-    order: playerIds,
+    order: ids,
     turnIndex: 0,
     properties,
     dice: null,
@@ -197,249 +312,405 @@ export function initMonopoly(playerIds: string[]): MonopolyState {
     freeParkingPot: 0,
     lastCard: null,
     winner: null,
+    chanceDeck: shuffle(16),
+    chestDeck: shuffle(16),
+    pendingTrade: null,
   };
 }
 
-export function currentPlayerId(state: MonopolyState): string {
-  return state.order[state.turnIndex]!;
+// --- Pure accessors ---
+
+export const currentPlayerId = (s: MonopolyState): string =>
+  s.order[s.turnIndex]!;
+
+export const ownsFullGroup = (
+  s: MonopolyState,
+  p: string,
+  c: PropertyColor,
+): boolean =>
+  BOARD.filter((x) => x.color === c).every(
+    (x) => s.properties[x.id]?.owner === p,
+  );
+
+export function calculateRent(s: MonopolyState, id: number): number {
+  const x = BOARD[id]!;
+  const p = s.properties[id]!;
+  if (!p?.owner) return 0;
+
+  if (x.type === "railroad") {
+    return [0, 25, 50, 100, 200][
+      RR.filter((i) => s.properties[i]?.owner === p.owner).length
+    ]!;
+  }
+
+  if (x.type === "utility") {
+    return (
+      ((s.dice?.[0] ?? 0) + (s.dice?.[1] ?? 0)) *
+      (UT.filter((i) => s.properties[i]?.owner === p.owner).length > 1 ? 10 : 4)
+    );
+  }
+
+  const r = x.rent ?? [0];
+  if (p.houses) return r[p.houses]!;
+  return ownsFullGroup(s, p.owner, x.color!) ? r[0]! * 2 : r[0]!;
 }
 
-export function ownsFullGroup(state: MonopolyState, playerId: string, color: PropertyColor): boolean {
-  const groupSpaces = BOARD.filter((s) => s.color === color);
-  return groupSpaces.every((s) => state.properties[s.id]?.owner === playerId);
+// --- Rent ladder for property detail panel ---
+
+export interface RentLadder {
+  baseRent: number;
+  colorSetRent: number;
+  houses: number[];
+  hotel: number;
+  houseCost: number;
+  mortgageValue: number;
+  unmortgageCost: number;
 }
 
-export function calculateRent(state: MonopolyState, spaceId: number): number {
-  const space = BOARD[spaceId]!;
-  const prop = state.properties[spaceId]!;
-  if (!prop.owner) return 0;
+export function getRentLadder(s: MonopolyState, id: number): RentLadder | null {
+  const x = BOARD[id]!;
+  const p = s.properties[id];
+  if (!x.rent || !p) return null;
 
-  if (space.type === "railroad") {
-    const ownedCount = RAILROAD_IDS.filter((id) => state.properties[id]?.owner === prop.owner).length;
-    return [0, 25, 50, 100, 200][ownedCount] ?? 0;
-  }
-  if (space.type === "utility") {
-    const ownedCount = UTILITY_IDS.filter((id) => state.properties[id]?.owner === prop.owner).length;
-    const multiplier = ownedCount >= 2 ? 10 : 4;
-    const diceSum = (state.dice?.[0] ?? 0) + (state.dice?.[1] ?? 0);
-    return diceSum * multiplier;
-  }
-  const rentTable = space.rent ?? [0];
-  if (prop.houses === 0) {
-    const hasMonopoly = ownsFullGroup(state, prop.owner, space.color!);
-    return hasMonopoly ? rentTable[0]! * 2 : rentTable[0]!;
-  }
-  return rentTable[prop.houses] ?? rentTable[rentTable.length - 1]!;
-}
+  const mortgageValue = Math.floor((x.price ?? 0) / 2);
+  const unmortgageCost = Math.ceil(mortgageValue * 1.1);
 
-function rollTwo(): [number, number] {
-  return [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
-}
-
-function resolveSpace(state: MonopolyState, playerId: string, spaceId: number): MonopolyState {
-  const space = BOARD[spaceId]!;
-  let s = state;
-
-  if (space.type === "tax") {
-    s = adjustCash(s, playerId, -(space.taxAmount ?? 0));
-    return { ...s, freeParkingPot: s.freeParkingPot + (space.taxAmount ?? 0), phase: "post-roll" };
-  }
-  if (space.type === "go-to-jail") return sendToJail(s, playerId);
-  if (space.type === "free-parking") {
-    if (s.freeParkingPot > 0) {
-      s = adjustCash(s, playerId, s.freeParkingPot);
-      s = { ...s, freeParkingPot: 0 };
-    }
-    return { ...s, phase: "post-roll" };
-  }
-  if (space.type === "chance" || space.type === "chest") {
-    const deck = space.type === "chance" ? CHANCE_CARDS : CHEST_CARDS;
-    const card = deck[Math.floor(Math.random() * deck.length)]!;
-    s = card.effect(s, playerId);
-    return { ...s, lastCard: card.text, phase: "post-roll" };
-  }
-  if (space.type === "property" || space.type === "railroad" || space.type === "utility") {
-    const prop = s.properties[spaceId]!;
-    if (!prop.owner) return { ...s, phase: "awaiting-buy" };
-    if (prop.owner === playerId || prop.mortgaged) return { ...s, phase: "post-roll" };
-    const rent = calculateRent(s, spaceId);
-    s = adjustCash(s, playerId, -rent);
-    s = adjustCash(s, prop.owner, rent);
-    return { ...s, phase: "post-roll" };
-  }
-  return { ...s, phase: "post-roll" };
-}
-
-function movePlayerAndResolve(state: MonopolyState, playerId: string, steps: number): MonopolyState {
-  const player = state.players[playerId]!;
-  const newPos = (player.position + steps) % 40;
-  const passedGo = newPos < player.position;
-  const s: MonopolyState = {
-    ...state,
-    players: {
-      ...state.players,
-      [playerId]: { ...player, position: newPos, cash: player.cash + (passedGo ? 200 : 0) },
-    },
-  };
-  return resolveSpace(s, playerId, newPos);
-}
-
-export function rollDice(state: MonopolyState, playerId: string): MonopolyState | null {
-  if (currentPlayerId(state) !== playerId) return null;
-  if (state.phase !== "pre-roll") return null;
-
-  const player = state.players[playerId]!;
-  const [d1, d2] = rollTwo();
-  const isDouble = d1 === d2;
-
-  if (player.inJail) {
-    if (isDouble) {
-      let s: MonopolyState = { ...state, dice: [d1, d2] };
-      s = { ...s, players: { ...s.players, [playerId]: { ...s.players[playerId]!, inJail: false, jailTurns: 0 } } };
-      return movePlayerAndResolve(s, playerId, d1 + d2);
-    }
-    const turns = player.jailTurns + 1;
-    if (turns >= 3) {
-      let s = adjustCash(state, playerId, -50);
-      s = { ...s, players: { ...s.players, [playerId]: { ...s.players[playerId]!, inJail: false, jailTurns: 0 } }, dice: [d1, d2] };
-      return movePlayerAndResolve(s, playerId, d1 + d2);
-    }
+  if (x.type === "railroad") {
+    const count = RR.filter((i) => s.properties[i]?.owner === p.owner).length;
     return {
-      ...state,
-      dice: [d1, d2],
-      players: { ...state.players, [playerId]: { ...player, jailTurns: turns } },
+      baseRent: [0, 25, 50, 100, 200][count]!,
+      colorSetRent: 0,
+      houses: [],
+      hotel: 0,
+      houseCost: 0,
+      mortgageValue,
+      unmortgageCost,
+    };
+  }
+
+  if (x.type === "utility") {
+    const count = UT.filter((i) => s.properties[i]?.owner === p.owner).length;
+    return {
+      baseRent: 0,
+      colorSetRent: 0,
+      houses: [],
+      hotel: 0,
+      houseCost: 0,
+      mortgageValue,
+      unmortgageCost,
+    };
+  }
+
+  const r = x.rent;
+  return {
+    baseRent: r[0]!,
+    colorSetRent: r[0]! * 2,
+    houses: [r[1]!, r[2]!, r[3]!, r[4]!],
+    hotel: r[5]!,
+    houseCost: x.houseCost ?? 0,
+    mortgageValue,
+    unmortgageCost,
+  };
+}
+
+// --- Internal resolution helpers ---
+
+const resolve = (s: MonopolyState, p: string, id: number): MonopolyState => {
+  const x = BOARD[id]!;
+
+  if (x.type === "go-to-jail") return jail(s, p);
+
+  if (x.type === "tax") {
+    return {
+      ...cash(s, p, -x.taxAmount!),
+      freeParkingPot: s.freeParkingPot + x.taxAmount!,
       phase: "post-roll",
     };
   }
 
-  let s: MonopolyState = { ...state, dice: [d1, d2] };
-  if (isDouble) {
-    const streak = state.doublesStreak + 1;
-    if (streak >= 3) {
-      return sendToJail({ ...s, doublesStreak: 0 }, playerId);
-    }
-    s = { ...s, doublesStreak: streak };
-  } else {
-    s = { ...s, doublesStreak: 0 };
+  if (x.type === "free-parking") {
+    return {
+      ...cash(s, p, s.freeParkingPot),
+      freeParkingPot: 0,
+      phase: "post-roll",
+    };
   }
-  return movePlayerAndResolve(s, playerId, d1 + d2);
+
+  if (x.type === "chance" || x.type === "chest") {
+    const key = x.type === "chance" ? "chanceDeck" : "chestDeck";
+    const deck = s[key];
+    if (!deck.length) return { ...s, phase: "post-roll" };
+    const cards = x.type === "chance" ? CH : CC;
+    const card = cards[deck[0]]!;
+    const after = { ...s, [key]: deck.slice(1) };
+    return {
+      ...card.effect(after, p),
+      lastCard: card.text,
+      phase: "post-roll",
+    };
+  }
+
+  if (["property", "railroad", "utility"].includes(x.type)) {
+    const prop = s.properties[id]!;
+    if (!prop.owner) return { ...s, phase: "awaiting-buy" };
+    if (prop.owner !== p && !prop.mortgaged) {
+      const r = calculateRent(s, id);
+      return { ...cash(cash(s, p, -r), prop.owner, r), phase: "post-roll" };
+    }
+    return { ...s, phase: "post-roll" };
+  }
+
+  return { ...s, phase: "post-roll" };
+};
+
+const moveSteps = (s: MonopolyState, p: string, n: number): MonopolyState => {
+  const old = s.players[p]!;
+  const d = (old.position + n) % 40;
+  const bonus = d < old.position ? 200 : 0;
+  return resolve(
+    {
+      ...s,
+      players: {
+        ...s.players,
+        [p]: { ...old, position: d, cash: old.cash + bonus },
+      },
+    },
+    p,
+    d,
+  );
+};
+
+// --- Exported game actions ---
+
+export function rollDice(s: MonopolyState, p: string): MonopolyState | null {
+  if (currentPlayerId(s) !== p || s.phase !== "pre-roll") return null;
+
+  const d1 = 1 + Math.floor(Math.random() * 6);
+  const d2 = 1 + Math.floor(Math.random() * 6);
+  const dbl = d1 === d2;
+  const pl = s.players[p]!;
+
+  if (pl.inJail) {
+    if (dbl) {
+      return moveSteps(
+        {
+          ...s,
+          dice: [d1, d2],
+          players: {
+            ...s.players,
+            [p]: { ...pl, inJail: false, jailTurns: 0 },
+          },
+        },
+        p,
+        d1 + d2,
+      );
+    }
+    const turns = pl.jailTurns + 1;
+    if (turns >= 3) {
+      return moveSteps(
+        {
+          ...cash(s, p, -50),
+          dice: [d1, d2],
+          players: {
+            ...s.players,
+            [p]: { ...pl, inJail: false, jailTurns: 0 },
+          },
+        },
+        p,
+        d1 + d2,
+      );
+    }
+    return {
+      ...s,
+      dice: [d1, d2],
+      players: {
+        ...s.players,
+        [p]: { ...pl, jailTurns: turns },
+      },
+      phase: "post-roll",
+    };
+  }
+
+  let n: MonopolyState = {
+    ...s,
+    dice: [d1, d2],
+    doublesStreak: dbl ? s.doublesStreak + 1 : 0,
+  };
+
+  if (n.doublesStreak >= 3) return jail({ ...n, doublesStreak: 0 }, p);
+  return moveSteps(n, p, d1 + d2);
 }
 
-export function buyProperty(state: MonopolyState, playerId: string): MonopolyState | null {
-  if (currentPlayerId(state) !== playerId || state.phase !== "awaiting-buy") return null;
-  const player = state.players[playerId]!;
-  const space = BOARD[player.position]!;
-  if (!space.price || player.cash < space.price) return null;
-  let s = adjustCash(state, playerId, -space.price);
-  s = { ...s, properties: { ...s.properties, [space.id]: { owner: playerId, houses: 0, mortgaged: false } }, phase: "post-roll" };
-  return s;
-}
-
-export function passOnProperty(state: MonopolyState, playerId: string): MonopolyState | null {
-  if (currentPlayerId(state) !== playerId || state.phase !== "awaiting-buy") return null;
-  return { ...state, phase: "post-roll" };
-}
-
-export function payBail(state: MonopolyState, playerId: string): MonopolyState | null {
-  if (currentPlayerId(state) !== playerId) return null;
-  const player = state.players[playerId]!;
-  if (!player.inJail || player.cash < 50) return null;
-  let s = adjustCash(state, playerId, -50);
-  s = { ...s, players: { ...s.players, [playerId]: { ...s.players[playerId]!, inJail: false, jailTurns: 0 } } };
-  return s;
-}
-
-export function useJailFreeCard(state: MonopolyState, playerId: string): MonopolyState | null {
-  const player = state.players[playerId]!;
-  if (!player.inJail || player.jailFreeCards < 1) return null;
+export function buyProperty(s: MonopolyState, p: string): MonopolyState | null {
+  if (currentPlayerId(s) !== p || s.phase !== "awaiting-buy") return null;
+  const pl = s.players[p]!;
+  const x = BOARD[pl.position]!;
+  if (!x.price || pl.cash < x.price) return null;
   return {
-    ...state,
-    players: { ...state.players, [playerId]: { ...player, inJail: false, jailTurns: 0, jailFreeCards: player.jailFreeCards - 1 } },
+    ...cash(s, p, -x.price),
+    properties: {
+      ...s.properties,
+      [x.id]: { owner: p, houses: 0, mortgaged: false },
+    },
+    phase: "post-roll",
   };
 }
 
-export function buildHouse(state: MonopolyState, playerId: string, spaceId: number): MonopolyState | null {
-  const space = BOARD[spaceId];
-  if (!space || space.type !== "property" || !space.color) return null;
-  const prop = state.properties[spaceId]!;
-  if (prop.owner !== playerId || prop.mortgaged) return null;
-  if (!ownsFullGroup(state, playerId, space.color)) return null;
-  if (prop.houses >= 5) return null;
-  const groupSpaces = BOARD.filter((s) => s.color === space.color);
-  const minHouses = Math.min(...groupSpaces.map((s) => state.properties[s.id]!.houses));
-  if (prop.houses > minHouses) return null; // even-build rule
-  const player = state.players[playerId]!;
-  const cost = space.houseCost ?? 0;
-  if (player.cash < cost) return null;
-  let s = adjustCash(state, playerId, -cost);
-  s = { ...s, properties: { ...s.properties, [spaceId]: { ...prop, houses: prop.houses + 1 } } };
-  return s;
+export const passOnProperty = (s: MonopolyState, p: string): MonopolyState | null =>
+  currentPlayerId(s) === p && s.phase === "awaiting-buy"
+    ? { ...s, phase: "post-roll" }
+    : null;
+
+export const payBail = (s: MonopolyState, p: string): MonopolyState | null =>
+  s.players[p]?.inJail && s.players[p]!.cash >= 50
+    ? {
+        ...cash(s, p, -50),
+        players: {
+          ...s.players,
+          [p]: { ...s.players[p]!, inJail: false, jailTurns: 0 },
+        },
+      }
+    : null;
+
+export const useJailFreeCard = (s: MonopolyState, p: string): MonopolyState | null =>
+  s.players[p]?.inJail && s.players[p]!.jailFreeCards
+    ? {
+        ...s,
+        players: {
+          ...s.players,
+          [p]: {
+            ...s.players[p]!,
+            inJail: false,
+            jailTurns: 0,
+            jailFreeCards: s.players[p]!.jailFreeCards - 1,
+          },
+        },
+      }
+    : null;
+
+export function buildHouse(s: MonopolyState, p: string, id: number): MonopolyState | null {
+  const x = BOARD[id]!;
+  const q = s.properties[id]!;
+  if (
+    !x?.color ||
+    q.owner !== p ||
+    q.mortgaged ||
+    q.houses >= 5 ||
+    !ownsFullGroup(s, p, x.color) ||
+    s.players[p]!.cash < (x.houseCost ?? 0)
+  ) return null;
+
+  const group = BOARD.filter((z) => z.color === x.color);
+  const min = Math.min(...group.map((z) => s.properties[z.id]!.houses));
+  if (q.houses > min) return null;
+
+  return {
+    ...cash(s, p, -x.houseCost!),
+    properties: {
+      ...s.properties,
+      [id]: { ...q, houses: q.houses + 1 },
+    },
+  };
 }
 
-export function mortgageProperty(state: MonopolyState, playerId: string, spaceId: number): MonopolyState | null {
-  const space = BOARD[spaceId];
-  const prop = state.properties[spaceId];
-  if (!space || !prop || prop.owner !== playerId || prop.mortgaged || prop.houses > 0) return null;
-  const value = Math.floor((space.price ?? 0) / 2);
-  let s = adjustCash(state, playerId, value);
-  s = { ...s, properties: { ...s.properties, [spaceId]: { ...prop, mortgaged: true } } };
-  return s;
+export const mortgageProperty = (s: MonopolyState, p: string, id: number): MonopolyState | null => {
+  const x = BOARD[id];
+  const q = s.properties[id];
+  if (!x || !q || q.owner !== p || q.mortgaged || q.houses) return null;
+  return {
+    ...cash(s, p, Math.floor((x.price ?? 0) / 2)),
+    properties: {
+      ...s.properties,
+      [id]: { ...q, mortgaged: true },
+    },
+  };
+};
+
+export const unmortgageProperty = (s: MonopolyState, p: string, id: number): MonopolyState | null => {
+  const x = BOARD[id];
+  const q = s.properties[id];
+  const cost = Math.ceil(((x?.price ?? 0) / 2) * 1.1);
+  if (!x || !q || q.owner !== p || !q.mortgaged || s.players[p]!.cash < cost) return null;
+  return {
+    ...cash(s, p, -cost),
+    properties: {
+      ...s.properties,
+      [id]: { ...q, mortgaged: false },
+    },
+  };
+};
+
+export function proposeTrade(s: MonopolyState, trade: PendingTrade): MonopolyState {
+  return { ...s, pendingTrade: trade };
 }
 
-export function unmortgageProperty(state: MonopolyState, playerId: string, spaceId: number): MonopolyState | null {
-  const space = BOARD[spaceId];
-  const prop = state.properties[spaceId];
-  if (!space || !prop || prop.owner !== playerId || !prop.mortgaged) return null;
-  const cost = Math.ceil(((space.price ?? 0) / 2) * 1.1);
-  const player = state.players[playerId]!;
-  if (player.cash < cost) return null;
-  let s = adjustCash(state, playerId, -cost);
-  s = { ...s, properties: { ...s.properties, [spaceId]: { ...prop, mortgaged: false } } };
-  return s;
+export function acceptTrade(s: MonopolyState): MonopolyState {
+  const trade = s.pendingTrade;
+  if (!trade) return s;
+  return { ...s, pendingTrade: null };
 }
 
-function declareBankruptcy(state: MonopolyState, playerId: string): MonopolyState {
-  const properties = { ...state.properties };
-  for (const key of Object.keys(properties)) {
-    const numId = Number(key);
-    if (properties[numId]?.owner === playerId) {
-      properties[numId] = { owner: null, houses: 0, mortgaged: false };
+export function declineTrade(s: MonopolyState): MonopolyState {
+  return { ...s, pendingTrade: null };
+}
+
+export function endTurn(s: MonopolyState): MonopolyState {
+  const p = currentPlayerId(s);
+  const dbl = s.dice?.[0] === s.dice?.[1];
+
+  if (s.players[p]!.cash < 0) {
+    const players = {
+      ...s.players,
+      [p]: { ...s.players[p]!, bankrupt: true, cash: 0 },
+    };
+    const properties = Object.fromEntries(
+      Object.entries(s.properties).map(([k, v]) => [
+        k,
+        v.owner === p ? { owner: null, houses: 0, mortgaged: false } : v,
+      ]),
+    ) as Record<number, PropertyState>;
+
+    const alive = s.order.filter((i) => !players[i]!.bankrupt);
+    if (alive.length <= 1) {
+      return {
+        ...s,
+        players,
+        properties,
+        phase: "game-over" as TurnPhase,
+        winner: alive[0] ?? null,
+      };
     }
+
+    let i = s.turnIndex;
+    do {
+      i = (i + 1) % s.order.length;
+    } while (players[s.order[i]!]!.bankrupt);
+
+    return {
+      ...s,
+      players,
+      properties,
+      turnIndex: i,
+      phase: "pre-roll",
+      dice: null,
+      doublesStreak: 0,
+    };
   }
-  const players = { ...state.players, [playerId]: { ...state.players[playerId]!, bankrupt: true, cash: 0 } };
-  const activeIds = state.order.filter((id) => !players[id]?.bankrupt);
-  if (activeIds.length <= 1) {
-    return { ...state, players, properties, phase: "game-over", winner: activeIds[0] ?? null };
+
+  if (dbl && !s.players[p]!.inJail) {
+    return { ...s, phase: "pre-roll", dice: null };
   }
-  let nextIndex = state.turnIndex;
+
+  let i = s.turnIndex;
   do {
-    nextIndex = (nextIndex + 1) % state.order.length;
-  } while (players[state.order[nextIndex]!]?.bankrupt);
-  return { ...state, players, properties, turnIndex: nextIndex, phase: "pre-roll", dice: null, doublesStreak: 0 };
-}
+    i = (i + 1) % s.order.length;
+  } while (s.players[s.order[i]!]!.bankrupt);
 
-export function endTurn(state: MonopolyState): MonopolyState {
-  const playerId = currentPlayerId(state);
-  const player = state.players[playerId]!;
-
-  if (player.cash < 0) {
-    return declareBankruptcy(state, playerId);
-  }
-
-  const activeIds = state.order.filter((id) => !state.players[id]?.bankrupt);
-  if (activeIds.length <= 1) {
-    return { ...state, phase: "game-over", winner: activeIds[0] ?? null };
-  }
-
-  const isDouble = state.dice && state.dice[0] === state.dice[1];
-  if (isDouble && !player.inJail && state.phase === "post-roll") {
-    return { ...state, phase: "pre-roll", dice: null };
-  }
-
-  let nextIndex = state.turnIndex;
-  do {
-    nextIndex = (nextIndex + 1) % state.order.length;
-  } while (state.players[state.order[nextIndex]!]?.bankrupt);
-
-  return { ...state, turnIndex: nextIndex, phase: "pre-roll", dice: null, doublesStreak: 0 };
+  return {
+    ...s,
+    turnIndex: i,
+    phase: "pre-roll",
+    dice: null,
+    doublesStreak: 0,
+  };
 }
