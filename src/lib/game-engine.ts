@@ -49,6 +49,28 @@ export const GAMES: GameTypeMeta[] = [
     emoji: "🎴",
     accent: "violet",
   },
+  {
+    id: "monopoly",
+    name: "Monopoly",
+    tagline: "Buy, build, and bankrupt your way to the top",
+    minPlayers: 2,
+    maxPlayers: 4,
+    rows: 0,
+    cols: 0,
+    emoji: "🎩",
+    accent: "emerald",
+  },
+  {
+    id: "catan",
+    name: "Catan",
+    tagline: "Settle the island, trade resources, build your empire",
+    minPlayers: 3,
+    maxPlayers: 4,
+    rows: 0,
+    cols: 0,
+    emoji: "🌾",
+    accent: "amber",
+  },
 ];
  
 export function gameMeta(id: string): GameTypeMeta | undefined {
@@ -163,9 +185,10 @@ export function cfWinner(b: CFBoard): CFResult {
  
 /**
  * Initialize the stored board JSON for a game type.
- * Note: Uno is NOT initialized here because its setup needs the player id
- * list (to deal hands) — see initUno() in uno-engine.ts, called directly
- * from the room page's startGame/playAgain handlers.
+ * Note: Uno, Monopoly, and Catan are NOT initialized here because their setup
+ * needs the player id list (to deal hands / seed cash / place on the board) —
+ * see initUno(), initMonopoly(), initCatan() in their own engine files, called
+ * directly from the room page's startGame/playAgain handlers.
  */
 export function initBoard(
   gameType: string,
