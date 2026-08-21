@@ -47,6 +47,9 @@ import {
   useJailFreeCard as monoUseJailFreeCard,
   type MonopolyState,
 } from "@/lib/monopoly-engine";
+
+import { applyMonopolyTrade, type MonopolyTrade } from "@/lib/monopoly-trade";
+import { playGameSound } from "@/lib/game-sounds";
 import {
   bankTrade as catanBankTrade,
   buildCity as catanBuildCity,
@@ -541,6 +544,17 @@ function RoomPage() {
     if (!myTurn || !monopolyState) return;
     await syncMonopoly(monoEndTurn(monopolyState));
   };
+  const tradeMonopoly = async (trade: MonopolyTrade) => {
+    if (!myTurn || !monopolyState) return;
+    const next = applyMonopolyTrade(monopolyState, trade);
+    if (next) {
+      playGameSound("trade-success");
+      await syncMonopoly(next);
+    } else {
+      playGameSound("trade-declined");
+    }
+  };
+
  
   // ---- Catan actions ----
   const syncCatan = async (next: CatanState) => {
@@ -733,6 +747,7 @@ function RoomPage() {
                   onBuildHouse={buildMonopolyHouse}
                   onMortgage={mortgageMonopoly}
                   onUnmortgage={unmortgageMonopoly}
+                  onTrade={tradeMonopoly}
                   onEndTurn={endMonopolyTurn}
                 />
               )}

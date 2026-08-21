@@ -1,3 +1,4 @@
+import { playGameSound } from "@/lib/game-sounds";
 import { useState } from "react";
 import {
   COSTS,
@@ -76,6 +77,7 @@ export function CatanBoard({
   const [roadBuildingFirst, setRoadBuildingFirst] = useState<string | null>(null);
   const [tradeGive, setTradeGive] = useState<ResourceType>("wood");
   const [tradeGet, setTradeGet] = useState<ResourceType>("brick");
+  const [diceKey, setDiceKey] = useState(0);
 
   const playerColorIdx: Record<string, number> = {};
   players.forEach((p, i) => (playerColorIdx[p.id] = i));
@@ -138,7 +140,7 @@ export function CatanBoard({
           }).join(" ");
           const clickable = (state.phase === "move-robber" || mode === "robber") && myTurn && !disabled;
           return (
-            <g key={hex.id} onClick={() => handleHexClick(hex.id)} className={clickable ? "cursor-pointer" : ""}>
+            <g key={hex.id} onClick={() => handleHexClick(hex.id)} className={clickable ? "cursor-pointer hex-glow" : ""}>
               <polygon
                 points={corners}
                 fill={RESOURCE_COLORS[hex.resource]}
@@ -186,7 +188,7 @@ export function CatanBoard({
               strokeWidth={edge.owner ? 6 : buildable ? 5 : 3}
               strokeLinecap="round"
               opacity={roadBuildingFirst === edge.id ? 0.5 : 1}
-              className={buildable ? "cursor-pointer" : ""}
+              className={buildable ? "cursor-pointer build-pop" : ""}
               onClick={() => handleEdgeClick(edge.id)}
             />
           );
@@ -314,7 +316,7 @@ export function CatanBoard({
           )}
 
           {state.phase === "roll" ? (
-            <button type="button" onClick={onRoll} className="rounded-xl bg-primary px-5 py-2.5 font-semibold text-primary-foreground hover:bg-primary/90">
+            <button type="button" onClick={() => { setDiceKey(k => k + 1); playGameSound("dice-roll"); onRoll(); }} className="rounded-xl bg-primary px-5 py-2.5 font-semibold text-primary-foreground hover:bg-primary/90">
               Roll dice
             </button>
           ) : (
@@ -386,7 +388,7 @@ export function CatanBoard({
                 <ResourceSelect value={tradeGet} onChange={setTradeGet} />
                 <button
                   type="button"
-                  onClick={() => onBankTrade(tradeGive, tradeGet)}
+                  onClick={() => { playGameSound("trade-success"); onBankTrade(tradeGive, tradeGet); }}
                   disabled={!me || me.resources[tradeGive] < 4 || tradeGive === tradeGet}
                   className="rounded-lg bg-secondary px-3 py-1 text-xs font-medium disabled:opacity-40"
                 >
@@ -439,7 +441,7 @@ function ActionButton({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => { playGameSound("settlement"); onClick(); }}
       title={costText}
       className={["rounded-lg border px-3 py-1.5 text-xs font-medium", active ? "border-primary bg-primary/10" : "border-border"].join(" ")}
     >
