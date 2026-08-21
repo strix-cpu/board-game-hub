@@ -246,7 +246,7 @@
 @keyframes money-fly {
   0% { transform: translateY(0) scale(1); opacity: 1; }
   100% { transform: translateY(-40px) scale(0.6); opacity: 0; }
-
+}
 
 /* --- Catan Animations --- */
 

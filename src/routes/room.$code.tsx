@@ -42,10 +42,14 @@ import {
   mortgageProperty as monoMortgageProperty,
   passOnProperty as monoPassOnProperty,
   payBail as monoPayBail,
+  proposeTrade as monoProposeTrade,
+  acceptTrade as monoAcceptTrade,
+  declineTrade as monoDeclineTrade,
   rollDice as monoRollDice,
   unmortgageProperty as monoUnmortgageProperty,
   useJailFreeCard as monoUseJailFreeCard,
   type MonopolyState,
+  type PendingTrade,
 } from "@/lib/monopoly-engine";
 
 import { applyMonopolyTrade, type MonopolyTrade } from "@/lib/monopoly-trade";
@@ -546,13 +550,27 @@ function RoomPage() {
   };
   const tradeMonopoly = async (trade: MonopolyTrade) => {
     if (!myTurn || !monopolyState) return;
-    const next = applyMonopolyTrade(monopolyState, trade);
-    if (next) {
+    // Store the trade proposal in game state so both players see it
+    await syncMonopoly(monoProposeTrade(monopolyState, trade));
+  };
+
+  const acceptTradeMonopoly = async () => {
+    if (!monopolyState?.pendingTrade) return;
+    const trade = monopolyState.pendingTrade;
+    const result = applyMonopolyTrade(monopolyState, trade);
+    if (result) {
       playGameSound("trade-success");
-      await syncMonopoly(next);
+      await syncMonopoly(result);
     } else {
       playGameSound("trade-declined");
+      await syncMonopoly(monoDeclineTrade(monopolyState));
     }
+  };
+
+  const declineTradeMonopoly = async () => {
+    if (!monopolyState) return;
+    playGameSound("trade-declined");
+    await syncMonopoly(monoDeclineTrade(monopolyState));
   };
 
  
@@ -663,7 +681,7 @@ function RoomPage() {
   const finished = room.status === "finished";
  
   return (
-    <div className="mx-auto min-h-screen max-w-4xl px-4 py-6 sm:py-10">
+    <div className="mx-auto min-h-screen px-4 py-6 sm:py-10">
       {/* top bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
@@ -749,6 +767,9 @@ function RoomPage() {
                   onUnmortgage={unmortgageMonopoly}
                   onTrade={tradeMonopoly}
                   onEndTurn={endMonopolyTurn}
+                  pendingTrade={monopolyState?.pendingTrade ?? null}
+                  onAcceptTrade={acceptTradeMonopoly}
+                  onDeclineTrade={declineTradeMonopoly}
                 />
               )}
               {isCatan && catanState && (
